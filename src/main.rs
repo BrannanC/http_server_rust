@@ -1,42 +1,45 @@
+use std::sync::Arc;
 use std::{
-    io, collections::HashMap, io::{prelude::*, BufReader}, net::{TcpListener, TcpStream}, time::Duration
+    io, collections::HashMap, time::Duration
 };
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
 #[allow(unused_imports)]
 
 mod routes;
 use routes::{Route, Routes};
 
-
-
-
-
-
 struct Server {
     listener: TcpListener,
-    routes: HashMap<String, Route>
+    routes: Arc<HashMap<String, Route>>
 }
 
 impl Server {
-    fn new(addr: &str) -> Server {
-        let listener = TcpListener::bind(addr).unwrap();
+    async fn new(addr: &str) -> Server {
+        let listener = TcpListener::bind(addr).await.unwrap();
+        let mut routes = HashMap::new();
 
-        let mut server = Server { listener, routes: HashMap::new() };
         for route in Routes::build() {
-
-            server.routes.insert(route.name.clone(), route );
+            routes.insert(route.name.clone(), route );
         }
-        server
+        Server { listener, routes: Arc::new(routes) }
+
     }
 
-    pub fn listen(&self) {
-        for mut stream in self.listener.incoming().flatten() {
-            stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-            if let Ok(req) = Request::new(&mut stream) {
-                let mut resource = req.resource[1..].split('/');
-                match self.routes.get(&resource.next().unwrap().to_string()){
-                    Some(route) => { stream.write_all(&(route.visit)(req)).unwrap(); },
-                    None => { stream.write_all(("HTTP/1.1 404 Not Found\r\n".to_string() + "\r\n").as_bytes()).unwrap(); },
-                }
+    pub async fn listen(&self) {
+        loop {
+            let (mut socket, _) = self.listener.accept().await.unwrap();
+            {
+                let routes = self.routes.clone();
+                tokio::spawn(async move {
+                    if let Ok(req) = Request::new(&mut socket).await {
+                        let mut resource = req.resource[1..].split('/');
+                        match routes.clone().get(&resource.next().unwrap().to_string()){
+                            Some(route) => { socket.write_all(&(route.visit)(req)).await; },
+                            None => { socket.write_all(("HTTP/1.1 404 Not Found\r\n".to_string() + "\r\n").as_bytes()).await; },
+                        }
+                    }
+                });
             }
         }
     }
@@ -54,13 +57,12 @@ pub struct Request {
 
 // ["GET /asdf HTTP/1.1", "Host: 127.0.0.1:4221", "User-Agent: curl/8.4.0", "Accept: */*"]
 impl Request {
-    fn new(stream: &mut TcpStream) -> io::Result<Request> {
+    async fn new(stream: &mut TcpStream) -> io::Result<Request> {
 
         let mut http_req_parts = BufReader::new(stream)
-            .lines()
-            .map(|result| result.unwrap());
+            .lines();
 
-        let header_parts = http_req_parts.next().unwrap();
+        let header_parts = http_req_parts.next_line().await.unwrap().unwrap();
         let mut header_parts = header_parts.split_ascii_whitespace();
         let method = match header_parts.next().unwrap(){
             "GET" => HttpMethod::Get,
@@ -75,7 +77,7 @@ impl Request {
 
         let mut headers = HashMap::new();
         loop {
-            let line = http_req_parts.next().unwrap();
+            let line = http_req_parts.next_line().await.unwrap().unwrap();
             if line.is_empty() {
                 break;
             }
@@ -101,9 +103,10 @@ enum HttpMethod {
     Delete,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     
-    let server = Server::new("127.0.0.1:4221");
-    server.listen();
+    let server = Server::new("127.0.0.1:4221").await;
+    server.listen().await;
 }
 
