@@ -3,19 +3,29 @@ use std::{
 };
 #[allow(unused_imports)]
 
-const RES_STATUS_LINE: &str = "HTTP/1.1 200 OK\r\n";
-const NOT_FOUND_SATUS_LINE: &str = "HTTP/1.1 404 Not Found\r\n";
-const CONTENT_TYPE_TEXT: &str = "Content-Type: text/plain\r\n";
+mod routes;
+use routes::{Route, Routes};
+
+
+
+
+
 
 struct Server {
     listener: TcpListener,
+    routes: HashMap<String, Route>
 }
 
 impl Server {
     fn new(addr: &str) -> Server {
         let listener = TcpListener::bind(addr).unwrap();
 
-        Server { listener }
+        let mut server = Server { listener, routes: HashMap::new() };
+        for route in Routes::build() {
+
+            server.routes.insert(route.name.clone(), route );
+        }
+        server
     }
 
     pub fn listen(&self) {
@@ -23,28 +33,22 @@ impl Server {
             stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
             if let Ok(req) = Request::new(&mut stream) {
                 let mut resource = req.resource[1..].split('/');
-                match resource.next().unwrap() {
-                    "" => { stream.write_all((RES_STATUS_LINE.to_string() + "\r\n").as_bytes()).unwrap(); },
-                    "echo" => {
-                        let stuff = resource.next().unwrap();
-                        let msg = RES_STATUS_LINE.to_string() + CONTENT_TYPE_TEXT + "Content-Length: " + &stuff.len().to_string() + "\r\n\r\n" + stuff;
-                        stream.write_all(msg.as_bytes()).unwrap();},
-                    _ => { stream.write_all((NOT_FOUND_SATUS_LINE.to_string() + "\r\n").as_bytes()).unwrap(); },
+                match self.routes.get(&resource.next().unwrap().to_string()){
+                    Some(route) => { stream.write_all(&(route.visit)(req)).unwrap(); },
+                    None => { stream.write_all(("HTTP/1.1 404 Not Found\r\n".to_string() + "\r\n").as_bytes()).unwrap(); },
                 }
             }
         }
     }
 }
 
-struct Client {}
-
 #[derive(Debug)]
-struct Request {
+pub struct Request {
 
-    resource: String,
-    method: HttpMethod,
-    headers: HashMap<String, String>,
-    body: Vec<u8>
+    pub resource: String,
+    pub method: HttpMethod,
+    pub headers: HashMap<String, String>,
+    pub body: Vec<u8>
 }
 
 
