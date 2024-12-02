@@ -3,7 +3,7 @@ use std::{env, fs};
 use crate::{Request, Response};
 
 
-// TODO: make these an enums, avoid cating to string..bytes..vec
+// TODO: make these an enums, avoid casting to string..bytes..vec
 const RES_STATUS_LINE: &str = "HTTP/1.1 200 OK";
 // const RES_CREATED: &str = "HTTP/1.1 201 Created\r\n\r\n";
 // const RES_NOT_FOUND: &str = "HTTP/1.1 404 Not Found\r\n\r\n";
