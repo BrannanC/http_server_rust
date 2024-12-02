@@ -1,4 +1,4 @@
-[![progress-banner](https://backend.codecrafters.io/progress/http-server/a3129e00-4eb8-4316-8d14-5db856ac297d)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+[![progress-banner](https://backend.codecrafters.io/progress/http-server/a3129e00-4eb8-4316-8d14-5db856ac297d)](https://app.codecrafters.io/users/BrannanC)
 
 Http server built for codecrafters challenge. Allows for concurrent connections, file upload/download, and gzip compression.
 
