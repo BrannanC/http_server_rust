@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::io::Write;
+use flate2::Compression;
+use flate2::write::GzEncoder;
 
 use crate::Request;
 
@@ -58,10 +61,20 @@ impl Response {
             for enc in encodings.split(',') {
                 if Response::is_valid_enc(enc.trim()) {
                     self.add_header("Content-Encoding".to_string(), enc.to_string());
-                    // ... encode
+                    self.gzip_body();
                     break;
                 }
             }
+        }
+    }
+
+    fn gzip_body(&mut self) {
+        if let Some(body) = &self.body {
+            let mut encoder = GzEncoder::new(vec![], Compression::default());
+            encoder.write_all(&body).unwrap();
+            let compressed = encoder.finish().unwrap();
+            self.add_header("Content-Length".to_string(), compressed.len().to_string());
+            self.body = Some(compressed);
         }
     }
 
