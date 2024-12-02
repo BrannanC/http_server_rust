@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::{
-    io, collections::HashMap, time::Duration
+    io, collections::HashMap
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -35,8 +35,8 @@ impl Server {
                     if let Ok(req) = Request::new(&mut socket).await {
                         let mut resource = req.resource[1..].split('/');
                         match routes.clone().get(&resource.next().unwrap().to_string()){
-                            Some(route) => { socket.write_all(&(route.visit)(req)).await; },
-                            None => { socket.write_all(("HTTP/1.1 404 Not Found\r\n".to_string() + "\r\n").as_bytes()).await; },
+                            Some(route) => { socket.write_all(&(route.visit)(req)).await.unwrap(); },
+                            None => { socket.write_all(("HTTP/1.1 404 Not Found\r\n".to_string() + "\r\n").as_bytes()).await.unwrap(); },
                         }
                     }
                 });
