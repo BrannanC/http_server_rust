@@ -56,7 +56,7 @@ impl Response {
     pub fn encode(&mut self, req: Request) {
         if let Some(encodings) = req.headers.get("Accept-Encoding") {
             for enc in encodings.split(',') {
-                if Response::is_valid_enc(enc) {
+                if Response::is_valid_enc(enc.trim()) {
                     self.add_header("Content-Encoding".to_string(), enc.to_string());
                     // ... encode
                     break;
