@@ -3,6 +3,7 @@ use std::{env, fs};
 use crate::Request;
 
 const RES_STATUS_LINE: &str = "HTTP/1.1 200 OK\r\n";
+const RES_CREATED: &str = "HTTP/1.1 201 Created\r\n\r\n";
 const NOT_FOUND_STATUS_LINE: &str = "HTTP/1.1 404 Not Found\r\n";
 const CONTENT_TYPE_TEXT: &str = "Content-Type: text/plain\r\n";
 const CONTENT_TYPE_APP: &str = "Content-Type: application/octet-stream\r\n";
@@ -63,7 +64,17 @@ impl Routes {
 
     fn files() -> Route {
         Route { name: "files".to_string(), subroutes: None, visit: |req| {
-            let mut res = RES_STATUS_LINE.as_bytes().to_vec();
+            match req.method {
+                crate::HttpMethod::Get => Routes::get_files(req),
+                crate::HttpMethod::Post => Routes::post_files(req),
+                _ => return Routes::not_found(),
+            }
+            
+        } }
+    }
+
+    fn get_files(req: Request) -> Vec<u8> {
+        let mut res = RES_STATUS_LINE.as_bytes().to_vec();
             res.extend(CONTENT_TYPE_APP.as_bytes()); 
             let file_path = req.resource[1..].split('/').nth(1);
             let file_bytes = match file_path {
@@ -71,15 +82,28 @@ impl Routes {
                     let dir: String = env::args().nth(2).unwrap();
                     let full_path = format!("{}/{}", &dir, path);
                     match fs::read(full_path) {
-                    Ok(fb) => fb,
-                    _ => return Routes::not_found(),
+                        Ok(fb) => fb,
+                        _ => return Routes::not_found(),
                 }},
-                None => return  Routes::not_found(),
+                None => return Routes::not_found(),
             };
             res.extend(format!("Content-Length: {}\r\n\r\n", file_bytes.len()).as_bytes());
             res.extend(file_bytes);
             res
-        } }
+    }
+
+    fn post_files(req: Request) -> Vec<u8> {
+        let file_path = req.resource[1..].split('/').nth(1);
+        match file_path {
+            Some(path) => {
+                let dir: String = env::args().nth(2).unwrap();
+                let full_path = format!("{}/{}", &dir, path);
+                match fs::write(full_path, &req.body) {
+                    Ok(_) => return RES_CREATED.as_bytes().to_vec(),
+                    _ => return Routes::not_found(),
+            }},
+            None => return Routes::not_found(),
+        };
     }
 
     fn not_found() -> Vec<u8> {

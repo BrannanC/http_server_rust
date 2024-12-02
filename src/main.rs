@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::{
     io, collections::HashMap
 };
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 #[allow(unused_imports)]
 
@@ -58,8 +58,10 @@ pub struct Request {
 // ["GET /asdf HTTP/1.1", "Host: 127.0.0.1:4221", "User-Agent: curl/8.4.0", "Accept: */*"]
 impl Request {
     async fn new(stream: &mut TcpStream) -> io::Result<Request> {
+        let reader = BufReader::new(stream);
 
-        let mut http_req_parts = BufReader::new(stream)
+        
+        let mut http_req_parts = reader
             .lines();
 
         let header_parts = http_req_parts.next_line().await.unwrap().unwrap();
@@ -76,8 +78,7 @@ impl Request {
         // let _version = ...
 
         let mut headers = HashMap::new();
-        loop {
-            let line = http_req_parts.next_line().await.unwrap().unwrap();
+        while let Some(line) = http_req_parts.next_line().await.unwrap() {
             if line.is_empty() {
                 break;
             }
@@ -88,7 +89,10 @@ impl Request {
 
             headers.insert(key, value);
         }
-        Ok(Request {resource, method, headers, body: vec![]})
+        
+        let body: Vec<u8> = http_req_parts.get_ref().buffer().to_vec();
+        
+        Ok(Request {resource, method, headers, body})
     }
 }
 
