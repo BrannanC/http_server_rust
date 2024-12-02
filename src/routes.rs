@@ -1,28 +1,34 @@
 use std::{env, fs};
 
-use crate::Request;
+use crate::{Request, Response};
 
-const RES_STATUS_LINE: &str = "HTTP/1.1 200 OK\r\n";
-const RES_CREATED: &str = "HTTP/1.1 201 Created\r\n\r\n";
-const NOT_FOUND_STATUS_LINE: &str = "HTTP/1.1 404 Not Found\r\n";
-const CONTENT_TYPE_TEXT: &str = "Content-Type: text/plain\r\n";
-const CONTENT_TYPE_APP: &str = "Content-Type: application/octet-stream\r\n";
+
+// TODO: make these an enums, avoid cating to string..bytes..vec
+const RES_STATUS_LINE: &str = "HTTP/1.1 200 OK";
+// const RES_CREATED: &str = "HTTP/1.1 201 Created\r\n\r\n";
+// const RES_NOT_FOUND: &str = "HTTP/1.1 404 Not Found\r\n\r\n";
+// const CONTENT_TYPE_TEXT: &str = "Content-Type: text/plain\r\n";
+// const CONTENT_TYPE_APP: &str = "Content-Type: application/octet-stream\r\n";
 
 #[derive(Debug)]
 pub struct Routes {}
 
 impl Routes {
     pub fn build() -> Vec<Route> {
-        vec![Routes::home(), Routes::echo(), Routes::user_agent(), Routes::files()]
+        vec![
+            Routes::home(),
+            Routes::echo(),
+            Routes::user_agent(),
+            Routes::files(),
+        ]
     }
+
     fn home() -> Route {
         Route {
             name: "".to_string(),
-            subroutes: None,
             visit: |_| {
-                let mut res = RES_STATUS_LINE.as_bytes().to_vec();
-                res.extend(b"\r\n".to_vec());
-                return res;
+                let res = Response::new(RES_STATUS_LINE.to_string());
+                return res.to_vec_u8();
             },
         }
     }
@@ -30,17 +36,18 @@ impl Routes {
     fn echo() -> Route {
         Route {
             name: "echo".to_string(),
-            subroutes: None,
             visit: |req| {
-                        let mut resource = req.resource[1..].split('/');
-                        let stuff = match resource.nth(1){
-                            Some(word) => word,
-                            None => "",
-                        };
-                        let mut res = RES_STATUS_LINE.as_bytes().to_vec();
-                        res.extend(CONTENT_TYPE_TEXT.as_bytes()); 
-                        res.extend(format!("Content-Length: {}\r\n\r\n{stuff}", stuff.len()).as_bytes());
-                        res
+                let mut resource = req.resource[1..].split('/');
+                let stuff = match resource.nth(1) {
+                    Some(word) => word,
+                    None => "",
+                };
+                let mut res = Response::new(RES_STATUS_LINE.to_string());
+                res.add_header("Content-Type".to_string(), "text/plain".to_string());
+                res.add_header("Content-Length".to_string(), stuff.len().to_string());
+                res.body = Some(stuff.as_bytes().to_vec());
+                res.encode(req);
+                res.to_vec_u8()
             },
         }
     }
@@ -48,48 +55,49 @@ impl Routes {
     fn user_agent() -> Route {
         Route {
             name: "user-agent".to_string(),
-            subroutes: None,
             visit: |req| {
-                        let mut res = RES_STATUS_LINE.as_bytes().to_vec();
-                        res.extend(CONTENT_TYPE_TEXT.as_bytes()); 
-                        let agent = match req.headers.get("User-Agent") {
-                            Some(word) => word,
-                            None => "",
-                        };
-                        res.extend(format!("Content-Length: {}\r\n\r\n{agent}", agent.len()).as_bytes());
-                        res
+                let agent = match req.headers.get("User-Agent") {
+                    Some(word) => word,
+                    None => "",
+                };
+                let mut res = Response::new(RES_STATUS_LINE.to_string());
+                res.add_header("Content-Type".to_string(), "text/plain".to_string());
+                res.add_header("Content-Length".to_string(), agent.len().to_string());
+                res.body = Some(agent.as_bytes().to_vec());
+                res.to_vec_u8()
             },
         }
     }
 
     fn files() -> Route {
-        Route { name: "files".to_string(), subroutes: None, visit: |req| {
-            match req.method {
+        Route {
+            name: "files".to_string(),
+            visit: |req| match req.method {
                 crate::HttpMethod::Get => Routes::get_files(req),
                 crate::HttpMethod::Post => Routes::post_files(req),
                 _ => return Routes::not_found(),
-            }
-            
-        } }
+            },
+        }
     }
 
     fn get_files(req: Request) -> Vec<u8> {
-        let mut res = RES_STATUS_LINE.as_bytes().to_vec();
-            res.extend(CONTENT_TYPE_APP.as_bytes()); 
-            let file_path = req.resource[1..].split('/').nth(1);
-            let file_bytes = match file_path {
-                Some(path) => {
-                    let dir: String = env::args().nth(2).unwrap();
-                    let full_path = format!("{}/{}", &dir, path);
-                    match fs::read(full_path) {
-                        Ok(fb) => fb,
-                        _ => return Routes::not_found(),
-                }},
-                None => return Routes::not_found(),
-            };
-            res.extend(format!("Content-Length: {}\r\n\r\n", file_bytes.len()).as_bytes());
-            res.extend(file_bytes);
-            res
+        let mut res = Response::new(RES_STATUS_LINE.to_string());
+        res.add_header("Content-Type".to_string(), "application/octet-stream".to_string());
+        let file_path = req.resource[1..].split('/').nth(1);
+        let file_bytes = match file_path {
+            Some(path) => {
+                let dir: String = env::args().nth(2).unwrap();
+                let full_path = format!("{}/{}", &dir, path);
+                match fs::read(full_path) {
+                    Ok(fb) => fb,
+                    _ => return Routes::not_found(),
+                }
+            }
+            None => return Routes::not_found(),
+        };
+        res.add_header("Content-Length".to_string(), file_bytes.len().to_string());
+        res.body = Some(file_bytes);
+        res.to_vec_u8()
     }
 
     fn post_files(req: Request) -> Vec<u8> {
@@ -99,21 +107,21 @@ impl Routes {
                 let dir: String = env::args().nth(2).unwrap();
                 let full_path = format!("{}/{}", &dir, path);
                 match fs::write(full_path, &req.body) {
-                    Ok(_) => return RES_CREATED.as_bytes().to_vec(),
+                    Ok(_) => return "HTTP/1.1 201 Created\r\n\r\n".as_bytes().to_vec(),
                     _ => return Routes::not_found(),
-            }},
+                }
+            }
             None => return Routes::not_found(),
         };
     }
 
     fn not_found() -> Vec<u8> {
-        ("HTTP/1.1 404 Not Found\r\n".to_string() + "\r\n").as_bytes().to_vec()
+        "HTTP/1.1 404 Not Found\r\n\r\n".as_bytes().to_vec()
     }
 }
 
 #[derive(Debug)]
 pub struct Route {
     pub name: String,
-    subroutes: Option<Vec<Route>>,
     pub visit: fn(req: Request) -> Vec<u8>,
 }

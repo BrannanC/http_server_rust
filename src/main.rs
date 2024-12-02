@@ -2,12 +2,15 @@ use std::sync::Arc;
 use std::{
     io, collections::HashMap
 };
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 #[allow(unused_imports)]
 
 mod routes;
 use routes::{Route, Routes};
+
+mod response;
+use response::Response;
 
 struct Server {
     listener: TcpListener,
@@ -96,11 +99,8 @@ impl Request {
     }
 }
 
-struct Response {
-}
-
 #[derive(Debug)]
-enum HttpMethod {
+pub enum HttpMethod {
     Get,
     Post,
     Put,
